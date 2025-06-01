@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>工程表アプリ（拡張版）</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1em; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    input[type="number"] { width: 60px; }
+    .progress-bar {
+      background: #4caf50;
+      height: 1em;
+      transition: width 0.3s;
+    }
+    #gantt { margin-top: 2em; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.css" />
+</head>
+<body>
+  <h1>工程表アプリ（拡張版）</h1>
+
+  <form id="taskForm">
+    <input type="text" id="taskName" placeholder="タスク名" required />
+    <input type="date" id="startDate" required />
+    <input type="date" id="endDate" required />
+    <input type="number" id="progress" min="0" max="100" value="0" /> %
+    <button type="submit">追加</button>
+  </form>
+
+  <button onclick="downloadCSV()">CSV保存</button>
+  <input type="file" accept=".csv" onchange="uploadCSV(event)" />
+
+  <table id="taskTable">
+    <thead>
+      <tr>
+        <th>タスク名</th>
+        <th>開始日</th>
+        <th>終了日</th>
+        <th>期間（日）</th>
+        <th>進捗</th>
+        <th>今日？</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="gantt"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.min.js"></script>
+  <script>
+    const tasks = [];
+
+    const form = document.getElementById('taskForm');
+    const table = document.getElementById('taskTable').querySelector('tbody');
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const name = document.getElementById('taskName').value;
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+      const progress = document.getElementById('progress').value;
+      tasks.push({ name, start, end, progress });
+      form.reset();
+      render();
+    });
+
+    function calcDays(start, end) {
+      const s = new Date(start);
+      const e = new Date(end);
+      const diff = (e - s) / (1000 * 60 * 60 * 24);
+      return diff >= 0 ? diff + 1 : 0;
+    }
+
+    function isTodayInRange(start, end) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const s = new Date(start);
+      const e = new Date(end);
+      return today >= s && today <= e;
+    }
+
+    function render() {
+      table.innerHTML = '';
+      const ganttTasks = [];
+
+      tasks.forEach((t, i) => {
+        const days = calcDays(t.start, t.end);
+        const todayMark = isTodayInRange(t.start, t.end) ? '📍今日あり' : '';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${t.name}</td>
+          <td>${t.start}</td>
+          <td>${t.end}</td>
+          <td>${days}</td>
+          <td>
+            <div style="background: #eee; width: 100%; position: relative;">
+              <div class="progress-bar" style="width: ${t.progress}%"></div>
+              <span style="position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.8em;">${t.progress}%</span>
+            </div>
+          </td>
+          <td>${todayMark}</td>
+          <td><button onclick="removeTask(${i})">削除</button></td>
+        `;
+        table.appendChild(row);
+
+        ganttTasks.push({
+          id: 'task' + i,
+          name: t.name,
+          start: t.start,
+          end: t.end,
+          progress: t.progress
+        });
+      });
+
+      renderGantt(ganttTasks);
+    }
+
+    function removeTask(index) {
+      tasks.splice(index, 1);
+      render();
+    }
+
+    function downloadCSV() {
+      const header = ['タスク名','開始日','終了日','進捗'];
+      const rows = tasks.map(t => [t.name, t.start, t.end, t.progress]);
+      const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tasks.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function uploadCSV(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const lines = reader.result.trim().split('\n').slice(1);
+        tasks.length = 0;
+        lines.forEach(line => {
+          const [name, start, end, progress] = line.split(',');
+          tasks.push({ name, start, end, progress });
+        });
+        render();
+      };
+      reader.readAsText(file);
+    }
+
+    function renderGantt(taskList) {
+      document.getElementById('gantt').innerHTML = '';
+      if (taskList.length > 0) {
+        new Gantt("#gantt", taskList, {
+          view_mode: 'Day',
+          language: 'ja',
+        });
+      }
+    }
+  </script>
+</body>
+</html>
